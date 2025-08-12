@@ -111,48 +111,70 @@ ini_set('max_execution_time', 120);
     }
 }
 
-  private function callMistral(?string $imagePath)
-{
-ini_set('max_execution_time', 300);
+    private function callMistral(?string $imagePath)
+    {
+        ini_set('max_execution_time', 300);
 
-    $endpoint = 'http://localhost:1234/api/v0/chat/completions';
-    $imageRaw = base64_encode(file_get_contents($imagePath));
-        $imageMime = mime_content_type($imagePath);
-        $imageData = "data:$imageMime;base64," . $imageRaw;
+        $endpoint = config('services.lmstudio.url');
+        $imageRaw = base64_encode(file_get_contents($imagePath));
+            $imageMime = mime_content_type($imagePath);
+            $imageData = "data:$imageMime;base64," . $imageRaw;
 
-         // 🔹 Load the system prompt from an external file
-        $systemPrompt = trim(Storage::disk('local')->get('prompts/sol_system_prompt.txt'));
-        $userPrompt = "Show results only, no explanations.";
+            //  Load the system prompt from an external file
+            $path = 'C:/prompts/sol_system_prompt.txt';
 
-    $payload = [
-        'model' => 'mistralai/mistral-small-3.2',
-      'messages' => [
-            ['role' => 'system', 'content' =>  $systemPrompt],
-            ['role' => 'user', 'content' =>  $userPrompt],
-        ],
-        'inputs' => [
-                'image' => $imageData,
+            if (File::exists($path)) {
+                $systemPrompt = trim(File::get($path));
+                echo $systemPrompt;
+            } else {
+                echo "File not found.";
+            }
+            //$systemPrompt = trim(Storage::disk('local')->get('prompts/sol_system_prompt.txt'));
+            $userPrompt = " Show results only, no explanations.";
+
+
+        $payload = [
+            'model' => 'mistralai/mistral-small-3.2',
+            'messages' => [
+                ['role' => 'user',
+                    'content' => [
+                            ['type' => 'text', 'text' => $userPrompt],
+                            [
+                                'type' => 'image_url',
+                                'image_url' => [
+                                    'url' => 'data:image/jpeg;base64,' . $imageRaw
+                                    //'url' => 'https://invst.ly/1bvrj7'
+                                ]
+                            ]
+                        ]
+                ],
+                ['role' => 'system', 'content' =>  $systemPrompt],
             ],
-        'temperature' => 0.7,
-        'max_tokens' => 4096,
-        'stream' => false,
-    ];
+            'temperature' => 0.7,
+            'max_tokens' => 4096,
+            'stream' => false,
+        ];
 
-    Log::info('Payload', $payload);
+        // Log debugging info
+        Log::info('Mistral API Debug', [
+            'endpoint'     => $endpoint,
+            'systemPrompt' => $systemPrompt,
+            'payload'      => $payload
+        ]);
 
 
-    try {
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])->timeout(300)->post($endpoint, $payload)->throw();
-        $data = $response->json();
-        Log::info('LLM response', $data);
-        return $data['choices'][0]['message']['content'] ?? null;
-    } catch (\Exception $e) {
-        Log::error('LM Studio request failed', ['exception' => $e]);
-        return null;
+        try {
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->timeout(300)->post($endpoint, $payload)->throw();
+            $data = $response->json();
+            Log::info('LLM response', $data);
+            return $data['choices'][0]['message']['content'] ?? null;
+        } catch (\Exception $e) {
+            Log::error('LM Studio request failed', ['exception' => $e]);
+            return null;
+        }
     }
-}
 
 
     public function showForm()
